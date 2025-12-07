@@ -6,7 +6,7 @@ description: "Find, install, and publish Nix Flakes with FlakeHub."
 
 inputs:
   visibility:
-    description: "`public` or `unlisted`"
+    description: "`public`, `unlisted`, or `private` (private flakes are available only on a [FlakeHub paid plan](https://flakehub.com/signup))"
     required: true
   name:
     description: The name of your published flake. In the format of OrgName/RepoName. OrgName must match your organization's GitHub root name or the publish will fail.
@@ -30,6 +30,10 @@ inputs:
     default: .
   tag:
     description: The Git tag to use, for non-rolling releases. This must be the character `v` followed by a SemVer version, e.g. `v0.1.1`.
+    required: false
+    default: null
+  rev:
+    description: The Git revision SHA to use for non-rolling releases.
     required: false
     default: null
   rolling-minor:
@@ -59,22 +63,65 @@ inputs:
     description: A GitHub token for making authenticated GitHub API requests.
     default: ${{ github.token }}
   extra-tags:
+    description: "DEPRECATED: Please use `extra-labels` instead."
+    required: false
+    default: ""
+  extra-labels:
     description: |
-      `flakehub-push` automatically uses the GitHub repo's topics as tags. This `extra-tags` parameter enables you to add extra tags beyond that as a comma-separated string. Only alphanumeric characters and hyphens are allowed in tags and the maximum length of tags is 50 characters. You can specify a maximum of 20 extra tags, and have a maximum of 25 tags, including those that we retrieve from GitHub. Any tags after the 25th will be ignored.
+      `flakehub-push` automatically uses the GitHub repo's topics as labels. This `extra-labels` parameter enables you to add extra labels beyond that as a comma-separated string. Only alphanumeric characters and hyphens are allowed in labels and the maximum length of labels is 50 characters. You can specify a maximum of 20 extra labels, and have a maximum of 25 labels, including those that we retrieve from GitHub. Any labels after the 25th will be ignored.
     required: false
     default: ""
   spdx-expression:
     description: A valid SPDX license expression. This will be used in place of what GitHub claims your repository's `spdxIdentifier` is.
     required: false
     default: ""
+  error-on-conflict:
+    description: Whether to error if a release for the same version has already been uploaded.
+    required: false
+    default: false
+  include-output-paths:
+    description: Whether to register the output paths of each flake output with FlakeHub.
+    required: false
+    default: false
+
+  my-flake-is-too-big:
+    description: Please read the source code of flakehub-push before using this.
+    required: false
+    default: false
+
+  # Used to construct the binary download URL
+  source-binary:
+    description: Run a version of the `flakehub-push` binary from somewhere already on disk. Conflicts with all `source-*` options.
+    required: false
+  source-branch:
+    description: The branch of `flakehub-push` to use. Conflicts with all other `source-*` options.
+    required: false
+    default: main
+  source-pr:
+    description: The pull request (PR) of `flakehub-push` to use. Conflicts with all other `source-*` options.
+    required: false
+  source-revision:
+    description: The revision of `flakehub-push` to use. Conflicts with all other `source-*` options.
+    required: false
+  source-tag:
+    description: The tag of `flakehub-push` to use. Conflicts with all other `source-*` options.
+    required: false
+  source-url:
+    description: A URL pointing to a `flakehub-push` binary. Overrides all other `source-*` options.
+    required: false
+  _internal-strict-mode:
+    description: Whether to fail when any errors are thrown. Used only to test the Action; do not set this in your own workflows.
+    default: false
+
+  # DEPRECATED options (use the `source-*` equivalents above)
   flakehub-push-binary:
-    description: Run a version of the `flakehub-push` binary from somewhere already on disk. Conflicts with all other `flakehub-push-*` options.
+    description: Run a version of the `flakehub-push` binary from somewhere already on disk. Conflicts with all `flakehub-push-*` options.
+    required: false
   flakehub-push-branch:
     description: The branch of `flakehub-push` to use. Conflicts with all other `flakehub-push-*` options.
     required: false
-    default: main
   flakehub-push-pr:
-    description: The PR of `flakehub-push` to use. Conflicts with all other `flakehub-push-*` options.
+    description: The pull request (PR) of `flakehub-push` to use. Conflicts with all `flakehub-push-*` options.
     required: false
   flakehub-push-revision:
     description: The revision of `flakehub-push` to use. Conflicts with all other `flakehub-push-*` options.
@@ -86,69 +133,6 @@ inputs:
     description: A URL pointing to a `flakehub-push` binary. Overrides all other `flakehub-push-*` options.
     required: false
 
-# https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions#runs-for-docker-container-actions
 runs:
-  using: composite
-  steps:
-  - name: Install `flakehub-push`
-    shell: bash
-    env:
-      FLAKEHUB_PUSH_VISIBLITY: ${{ inputs.visibility }}
-      FLAKEHUB_PUSH_TAG: ${{ inputs.tag }}
-      FLAKEHUB_PUSH_ROLLING_MINOR: ${{ inputs.rolling-minor }}
-      FLAKEHUB_PUSH_ROLLING: ${{ inputs.rolling }}
-      FLAKEHUB_PUSH_HOST: ${{ inputs.host }}
-      FLAKEHUB_PUSH_LOG_DIRECTIVES: ${{ inputs.log-directives }}
-      FLAKEHUB_PUSH_LOGGER: ${{ inputs.logger }}
-      FLAKEHUB_PUSH_GITHUB_TOKEN: ${{ inputs.github-token }}
-      FLAKEHUB_PUSH_NAME: ${{ inputs.name }}
-      FLAKEHUB_PUSH_MIRROR: ${{ inputs.mirror }}
-      FLAKEHUB_PUSH_REPOSITORY: ${{ inputs.repository }}
-      FLAKEHUB_PUSH_DIRECTORY: ${{ inputs.directory }}
-      FLAKEHUB_PUSH_GIT_ROOT: ${{ inputs.git-root }}
-      FLAKEHUB_PUSH_EXTRA_TAGS: ${{ inputs.extra-tags }}
-      FLAKEHUB_PUSH_SPDX_EXPRESSION: ${{ inputs.spdx-expression }}
-      # Also GITHUB_REPOSITORY, GITHUB_REF_NAME, GITHUB_TOKEN, ACTIONS_ID_TOKEN_REQUEST_TOKEN, ACTIONS_ID_TOKEN_REQUEST_URL
-    run: |
-      if [ "${RUNNER_OS}" == "Linux" ]; then
-        export ARCHITECTURE_OS="Linux"
-      else
-        echo "${RUNNER_OS} not supported"
-        exit 1
-      fi
-
-      if [ "${RUNNER_ARCH}" == "X64" ]; then
-        export ARCHITECTURE_ARCH="X64"
-      else
-        echo "${RUNNER_ARCH} not supported"
-        exit 1
-      fi
-
-      export ARCHITECTURE="${ARCHITECTURE_ARCH}-${ARCHITECTURE_OS}"
-
-      if [ -n "${{ inputs.flakehub-push-url }}" ]; then
-        export FLAKEHUB_PUSH_URL="${{ inputs.flakehub-push-url }}"
-      else
-        if [ -n "${{ inputs.flakehub-push-pr }}" ]; then
-          export FLAKEHUB_PUSH_URL="https://install.determinate.systems/flakehub-push/pr/${{ inputs.flakehub-push-pr }}/${ARCHITECTURE}?ci=github"
-        elif [ -n "${{ inputs.flakehub-push-tag }}" ]; then
-          export FLAKEHUB_PUSH_URL="https://install.determinate.systems/flakehub-push/tag/${{ inputs.flakehub-push-tag }}/${ARCHITECTURE}?ci=github"
-        elif [ -n "${{ inputs.flakehub-push-revision }}" ]; then
-          export FLAKEHUB_PUSH_URL="https://install.determinate.systems/flakehub-push/rev/${{ inputs.flakehub-push-revision }}/${ARCHITECTURE}?ci=github"
-        elif [ -n "${{ inputs.flakehub-push-branch }}" ]; then
-          export FLAKEHUB_PUSH_URL="https://install.determinate.systems/flakehub-push/branch/${{ inputs.flakehub-push-branch }}/${ARCHITECTURE}?ci=github"
-        else
-          export FLAKEHUB_PUSH_URL="https://install.determinate.systems/flakehub-push/stable/${ARCHITECTURE}?ci=github"
-        fi
-      fi
-      echo "Set FLAKEHUB_PUSH_URL=$FLAKEHUB_PUSH_URL"
-
-      if [ -n "${{ inputs.flakehub-push-binary }}" ]; then
-        chmod +x ${{ inputs.flakehub-push-binary }}
-        exec ${{ inputs.flakehub-push-binary }}
-      else
-        DEST=$(mktemp -d)
-        curl --retry 20 -L $FLAKEHUB_PUSH_URL -o $DEST/flakehub-push
-        chmod +x $DEST/flakehub-push
-        exec $DEST/flakehub-push
-      fi
+  using: "node20"
+  main: "dist/index.js"

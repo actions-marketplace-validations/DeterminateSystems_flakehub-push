@@ -4,14 +4,14 @@ use color_eyre::eyre::{eyre, WrapErr};
 use graphql_client::GraphQLQuery;
 
 pub(crate) const GITHUB_ENDPOINT: &str = "https://api.github.com/graphql";
-pub(crate) const MAX_TAG_LENGTH: usize = 50;
-pub(crate) const MAX_NUM_TOTAL_TAGS: usize = 25;
+pub(crate) const MAX_LABEL_LENGTH: usize = 50;
+pub(crate) const MAX_NUM_TOTAL_LABELS: usize = 25;
 const MAX_NUM_EXTRA_TOPICS: i64 = 20;
 
 #[derive(GraphQLQuery)]
 #[graphql(
-    schema_path = "src/graphql/github_schema.graphql",
-    query_path = "src/graphql/query/github_graphql_data_query.graphql",
+    schema_path = "src/github/graphql/github_schema.graphql",
+    query_path = "src/github/graphql/query/github_graphql_data_query.graphql",
     response_derives = "Debug",
     variables_derives = "Debug"
 )]
@@ -25,6 +25,7 @@ impl GithubGraphqlDataQuery {
     ))]
     pub(crate) async fn get(
         reqwest_client: &reqwest::Client,
+        bearer_token: &str,
         project_owner: &str,
         project_name: &str,
         revision: &str,
@@ -37,9 +38,13 @@ impl GithubGraphqlDataQuery {
                 revision: revision.to_string(),
                 max_num_topics: MAX_NUM_EXTRA_TOPICS,
             };
+
+            tracing::debug!(?variables); // TODO remove
+
             let query = GithubGraphqlDataQuery::build_query(variables);
             let reqwest_response = reqwest_client
-                .post(crate::graphql::GITHUB_ENDPOINT)
+                .post(GITHUB_ENDPOINT)
+                .bearer_auth(bearer_token)
                 .json(&query)
                 .send()
                 .await
@@ -47,7 +52,7 @@ impl GithubGraphqlDataQuery {
 
             let response_status = reqwest_response.status();
             let response: graphql_client::Response<
-                <crate::graphql::GithubGraphqlDataQuery as GraphQLQuery>::ResponseData,
+                <crate::github::graphql::GithubGraphqlDataQuery as GraphQLQuery>::ResponseData,
             > = reqwest_response
                 .json()
                 .await
@@ -128,6 +133,7 @@ impl GithubGraphqlDataQuery {
             .collect();
 
         Ok(GithubGraphqlDataResult {
+            revision: revision.to_string(),
             rev_count,
             spdx_identifier,
             project_id,
@@ -139,6 +145,7 @@ impl GithubGraphqlDataQuery {
 
 #[derive(Debug)]
 pub(crate) struct GithubGraphqlDataResult {
+    pub(crate) revision: String,
     pub(crate) rev_count: i64,
     pub(crate) spdx_identifier: Option<String>,
     pub(crate) project_id: i64,

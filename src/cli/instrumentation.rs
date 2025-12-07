@@ -1,6 +1,5 @@
-use atty::Stream;
 use color_eyre::eyre::WrapErr;
-use std::error::Error;
+use std::{error::Error, io::IsTerminal};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{
     filter::Directive, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
@@ -42,7 +41,7 @@ pub struct Instrumentation {
     pub log_directives: Vec<Directive>,
 }
 
-impl<'a> Instrumentation {
+impl Instrumentation {
     pub fn log_level(&self) -> String {
         match self.verbose {
             0 => "info",
@@ -52,7 +51,7 @@ impl<'a> Instrumentation {
         .to_string()
     }
 
-    pub fn setup<'b: 'a>(&'b self) -> color_eyre::Result<()> {
+    pub fn setup(&self) -> color_eyre::Result<()> {
         let filter_layer = self.filter_layer()?;
 
         let registry = tracing_subscriber::registry()
@@ -86,7 +85,7 @@ impl<'a> Instrumentation {
         S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
     {
         tracing_subscriber::fmt::Layer::new()
-            .with_ansi(atty::is(Stream::Stderr))
+            .with_ansi(std::io::stderr().is_terminal())
             .with_writer(std::io::stderr)
     }
 
@@ -95,7 +94,7 @@ impl<'a> Instrumentation {
         S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
     {
         tracing_subscriber::fmt::Layer::new()
-            .with_ansi(atty::is(Stream::Stderr))
+            .with_ansi(std::io::stderr().is_terminal())
             .with_writer(std::io::stderr)
             .pretty()
     }
@@ -105,7 +104,7 @@ impl<'a> Instrumentation {
         S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
     {
         tracing_subscriber::fmt::Layer::new()
-            .with_ansi(atty::is(Stream::Stderr))
+            .with_ansi(std::io::stderr().is_terminal())
             .with_writer(std::io::stderr)
             .json()
     }
@@ -115,7 +114,7 @@ impl<'a> Instrumentation {
         S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
     {
         tracing_subscriber::fmt::Layer::new()
-            .with_ansi(atty::is(Stream::Stderr))
+            .with_ansi(std::io::stderr().is_terminal())
             .with_writer(std::io::stderr)
             .compact()
             .without_time()
@@ -137,7 +136,7 @@ impl<'a> Instrumentation {
                         _ => return Err(e).wrap_err_with(|| "parsing RUST_LOG directives"),
                     }
                 }
-                EnvFilter::try_new(&format!(
+                EnvFilter::try_new(format!(
                     "{}={}",
                     env!("CARGO_PKG_NAME").replace('-', "_"),
                     self.log_level()
