@@ -22,7 +22,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: DeterminateSystems/flake-checker-action@main
         with:
           fail-mode: true
@@ -95,7 +95,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@main
         if: ${{ github.event_name == 'merge_group' }}
       - uses: DeterminateSystems/flakehub-cache-action@main
@@ -124,11 +124,11 @@ jobs:
       id-token: "write"
       contents: "read"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: DeterminateSystems/determinate-nix-action@main
-      - uses: DeterminateSystems/flakehub-cache-action@main
 
+      - uses: DeterminateSystems/flakehub-cache-action@main
       - run: |
           mkdir artifacts
 

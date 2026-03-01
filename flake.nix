@@ -2,7 +2,7 @@
   description = "A GitHub Action for publishing Nix flakes to FlakeHub";
 
   inputs = {
-    nixpkgs.url = "https://flakehub.com/f/DeterminateSystems/secure/0";
+    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
     crane.url = "https://flakehub.com/f/ipetkov/crane/0.20.1";
     fenix = {
       url = "https://flakehub.com/f/nix-community/fenix/0.1";
@@ -136,7 +136,7 @@
         }
       );
 
-      formatter = forAllSystems ({ pkgs, ... }: pkgs.nixfmt-rfc-style);
+      formatter = forAllSystems ({ pkgs, ... }: pkgs.nixfmt);
 
       dockerImages = forDockerSystems (
         { system, pkgs, ... }:
