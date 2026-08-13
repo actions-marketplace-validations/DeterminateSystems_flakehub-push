@@ -1,7 +1,7 @@
 use std::{fmt::Display, io::IsTerminal, process::ExitCode};
 
 use clap::Parser;
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::{eyre, Context as _, Result};
 use error::Error;
 use http::StatusCode;
 use reqwest::Response;
@@ -106,7 +106,12 @@ async fn execute() -> Result<std::process::ExitCode> {
 
     let ctx = PushContext::from_cli_and_env(&mut cli).await?;
 
-    let fhclient = FlakeHubClient::new(ctx.flakehub_host, ctx.auth_token)?;
+    // Acquire the auth token *after* PushContext construction (which includes
+    // Nix evaluation via ReleaseMetadata::new). This ensures short-lived OIDC
+    // tokens are fresh when first used.
+    let (auth_token, ctx) = ctx.acquire_auth_token().await?;
+
+    let fhclient = FlakeHubClient::new(ctx.flakehub_host, auth_token)?;
 
     let response = fhclient.token_status().await?;
     if let Err(e) = response.error_for_status() {
@@ -143,7 +148,7 @@ async fn execute() -> Result<std::process::ExitCode> {
                     let stage_result: StageResult = response
                         .json()
                         .await
-                        .map_err(|_| eyre!("Decoding release metadata POST response"))?;
+                        .context("Decoding release metadata POST response")?;
 
                     stage_result
                 }
@@ -187,8 +192,12 @@ async fn execute() -> Result<std::process::ExitCode> {
         }
     };
 
-    // upload tarball to s3
-    s3::upload_release_to_s3(stage_result.s3_upload_url, ctx.tarball).await?;
+    s3::upload_release_to_s3(
+        stage_result.s3_upload_url,
+        stage_result.s3_upload_headers,
+        ctx.tarball,
+    )
+    .await?;
 
     // "publish.rs" - publish the release after upload
     fhclient.release_publish(stage_result.uuid).await?;
@@ -217,8 +226,8 @@ async fn response_text(res: Response) -> String {
 pub(crate) enum Visibility {
     Public,
     // a backwards-compatible alias to unlisted
-    #[serde(rename = "unlisted")]
-    Hidden,
+    #[serde(alias = "hidden")]
+    #[value(alias("hidden"))]
     Unlisted,
     Private,
 }
@@ -227,7 +236,7 @@ impl Display for Visibility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Visibility::Public => f.write_str("public"),
-            Visibility::Hidden | Visibility::Unlisted => f.write_str("unlisted"),
+            Visibility::Unlisted => f.write_str("unlisted"),
             Visibility::Private => f.write_str("private"),
         }
     }
